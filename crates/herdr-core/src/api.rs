@@ -455,6 +455,7 @@ async fn terminal_attach(core: Ctx<'_>, p: AttachParams) -> Result<AttachResult,
         size: (p.cols, p.rows),
         display: p.display,
         resumed: p.resumed,
+        caller: p.caller,
     };
     let channel = core.attach(conn, id, req)?;
     Ok(AttachResult {

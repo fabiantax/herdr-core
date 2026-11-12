@@ -37,6 +37,7 @@ fn resize_drags_serialize_nothing_without_observers_and_only_latest_when_stalled
         size: (80, 24),
         display: Display::default(),
         resumed: false,
+        caller: None,
     };
     let channel = core.attach(&leader, id, request(false, false)).unwrap();
     PAINTS.set(0);
@@ -88,6 +89,67 @@ fn resize_drags_serialize_nothing_without_observers_and_only_latest_when_stalled
             }
         }
     });
+    drop(core);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_nested_viewer_closes_when_the_pane_it_lives_in_loses_its_last_viewer() {
+    let root = std::path::PathBuf::from(format!("/var/tmp/hc-nested-{}", crate::platform::random_hex()));
+    let paths = crate::paths::Paths {
+        socket: root.join("core.sock"),
+        holder_socket: root.join("holder.sock"),
+        state: root.clone(),
+        config: root.join("config.toml"),
+    };
+    paths.create_dirs().unwrap();
+    let core = Core::start(paths, crate::api::CoreInfo { id: "test".into(), name: "test".into() }).unwrap();
+    let (pane, target) = {
+        let mut st = core.lock();
+        let new = || crate::terminals::NewTerminal { argv: vec!["sh".into()], cols: 80, rows: 24, ..Default::default() };
+        let pane = st.reg.create(new(), 0).unwrap();
+        let target = st.reg.create(new(), 0).unwrap();
+        st.screens.insert(pane, ghostty_vt::Terminal::new(80, 24, 1 << 20));
+        st.screens.insert(target, ghostty_vt::Terminal::new(80, 24, 1 << 20));
+        (pane, target)
+    };
+    let request = |caller: Option<String>| AttachRequest {
+        observe: false,
+        resize_notifications: false,
+        history: 0,
+        size: (80, 24),
+        display: Display::default(),
+        resumed: false,
+        caller,
+    };
+    let outer = Arc::new(Conn::default());
+    core.attach(&outer, pane, request(None)).unwrap();
+    // Attached from inside `pane` (the picker flow): its client runs there.
+    let nested = Arc::new(Conn::default());
+    core.attach(&nested, target, request(Some(crate::terminals::address(pane)))).unwrap();
+    let bystander = Arc::new(Conn::default());
+    let kept = core.attach(&bystander, target, request(None)).unwrap();
+
+    core.detach(&outer, None);
+
+    nested.with(|out| {
+        assert!(
+            std::iter::from_fn(|| out.next_frame()).any(|frame| frame[4] == wire::CLOSE),
+            "the nested client must be closed so its pane's program gets the keys back"
+        );
+    });
+    bystander.with(|out| {
+        assert!(
+            !std::iter::from_fn(|| out.next_frame()).any(|frame| frame[4] == wire::CLOSE),
+            "an unrelated viewer of the same terminal keeps its stream"
+        );
+    });
+    {
+        let st = core.lock();
+        assert!(st.viewers.get(&pane).is_none_or(|vs| vs.is_empty()), "the pane is unwatched");
+        assert_eq!(st.viewers.get(&target).map_or(0, |vs| vs.len()), 1, "only the bystander remains");
+        assert_eq!(st.viewers.get(&target).unwrap()[0].channel, kept);
+    }
     drop(core);
     std::fs::remove_dir_all(root).unwrap();
 }

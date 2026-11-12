@@ -28,6 +28,7 @@ async fn image_streams_share_one_timer_task_and_keep_the_latest_deadline() {
                 size: (80, 24),
                 display: Display::default(),
                 resumed: false,
+                caller: None,
             },
         )
         .unwrap();
@@ -148,6 +149,7 @@ async fn handover_carries_held_replies_and_answers_including_final_holder_output
                 size: (80, 24),
                 display: Display::default(),
                 resumed: false,
+                caller: None,
             },
         )
         .unwrap();
@@ -231,6 +233,7 @@ async fn keys_pressed_during_a_paste_follow_its_submit() {
                 size: (80, 24),
                 display: Display::default(),
                 resumed: false,
+                caller: None,
             },
         )
         .unwrap();

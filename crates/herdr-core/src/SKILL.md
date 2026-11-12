@@ -171,7 +171,9 @@ started once you have their results: `hc kill <t>; hc rm <t>`.
 `run` times out after 180 seconds by default (`--timeout S`): it prints
 `[hc] still running as t3` and exits 124, but the program keeps running.
 Use the returned address to wait/read it; don't launch a duplicate.
-`hc attach <t>` lets a person interact directly; Ctrl+\ detaches.
+`hc attach <t>` lets a person interact directly; Ctrl+\ detaches. Attached
+from inside a pane (a picker pick), it ends when that pane's viewer leaves,
+so the pane never loses its keys to a view nobody can reach.
 `hc put <t> <file>` sends a file beside a terminal and prints its destination.
 `hc label <t> key=value` adds labels.
 
