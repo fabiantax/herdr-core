@@ -32,6 +32,9 @@ pub struct Viewer {
     pub conn: Arc<Conn>,
     pub channel: u32,
     pub observe: bool,
+    /// The terminal this attach was made from: a nested attach's client lives
+    /// in that pane, so it must go when the pane loses its last viewer.
+    caller: Option<String>,
     resize_notifications: bool,
     repaint_pending: bool,
     size: (u16, u16),
@@ -63,6 +66,8 @@ pub struct AttachRequest {
     pub size: (u16, u16),
     pub display: Display,
     pub resumed: bool,
+    /// The caller terminal (`HC_TERMINAL_ID`): set when attaching from inside a pane.
+    pub caller: Option<String>,
 }
 
 impl Core {
@@ -85,6 +90,7 @@ impl Core {
             conn: conn.clone(),
             channel,
             observe: req.observe,
+            caller: req.caller,
             resize_notifications: req.observe && req.resize_notifications,
             repaint_pending: false,
             size: req.size,
@@ -370,6 +376,34 @@ impl Core {
             }
         }
         st.viewers.retain(|_, vs| !vs.is_empty());
+        // A nested attach (`hc attach` run inside a pane) keeps its client alive
+        // in that pane. When the pane loses its last viewer, nobody can reach the
+        // nested view to quit it: it would eat the pane's keys forever. Close it,
+        // and the client's exit hands the pane back to its program.
+        let mut closing = touched.clone();
+        while let Some(id) = closing.pop() {
+            if st.viewers.get(&id).is_some_and(|vs| !vs.is_empty()) {
+                continue;
+            }
+            let from = crate::terminals::address(id);
+            for (other, vs) in st.viewers.iter_mut() {
+                let before = vs.len();
+                vs.retain(|v| {
+                    let nested = v.caller.as_deref() == Some(from.as_str());
+                    if nested {
+                        // The nested client's own connection is still alive; the
+                        // pane it lives in lost its viewer, not this viewer.
+                        v.conn.with(|out| out.close(v.channel, br#"{"reason":"detached"}"#));
+                    }
+                    !nested
+                });
+                if vs.len() != before {
+                    closing.push(*other);
+                    touched.push(*other);
+                }
+            }
+            st.viewers.retain(|_, vs| !vs.is_empty());
+        }
         for id in touched {
             self.apply_size(&mut st, id);
         }
