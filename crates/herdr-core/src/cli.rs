@@ -449,6 +449,7 @@ fn run(cmd: Option<Cmd>, json: bool, asked: bool) -> Result<Option<Out>, RpcErro
         }
         Cmd::Rm(mut p) => {
             p.terminal = pick_finished(p.terminal)?;
+            p.caller = Some(caller());
             let r = call("terminal.rm", to(&p))?;
             let human = format!("removed {}", r["removed"].as_str().unwrap_or("?"));
             Out { json: r, human }
@@ -458,7 +459,8 @@ fn run(cmd: Option<Cmd>, json: bool, asked: bool) -> Result<Option<Out>, RpcErro
             let human = describe(&r);
             Out { json: r, human }
         }
-        Cmd::Label(p) => {
+        Cmd::Label(mut p) => {
+            p.caller = Some(caller());
             let r = call("terminal.label", to(&p))?;
             let human = describe(&r);
             Out { json: r, human }

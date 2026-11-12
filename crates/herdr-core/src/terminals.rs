@@ -44,6 +44,10 @@ pub struct Terminal {
     /// died by signal without an exit code), holder_lost (its holder
     /// died), stopped_by_restart (nothing ran it any more after a restart).
     pub reason: Option<String>,
+    /// Who ended it through the API (`terminal.kill`): the calling terminal
+    /// (`HC_TERMINAL_ID` inside it), else the calling process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub killed_by: Option<String>,
     pub created_ms: u64,
     pub finished_ms: Option<u64>,
     /// "exact", or "inexact" after a core crash (older history may be missing).
@@ -277,6 +281,7 @@ impl Registry {
                 exit_code: None,
                 signal: None,
                 reason: None,
+                killed_by: None,
                 created_ms: now_ms,
                 finished_ms: None,
                 screen: "exact".into(),

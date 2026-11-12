@@ -310,8 +310,18 @@ async fn terminal_get(core: Ctx<'_>, p: TerminalParams) -> Result<Public, RpcErr
 
 async fn terminal_kill(core: Ctx<'_>, p: TerminalParams) -> Result<Public, RpcError> {
     let id = resolve(core, &p.terminal)?;
-    if core.lock().reg.terminals.get(&id).is_some_and(|t| t.is_live()) {
-        core.lock().killing.insert(id);
+    audit(format!("kill {} by {}", crate::terminals::address(id), p.caller.as_deref().unwrap_or("?")));
+    let live = {
+        let mut st = core.lock();
+        let live = st.reg.terminals.get(&id).is_some_and(|t| t.is_live());
+        if live {
+            st.killing.insert(id);
+            st.reg.terminals.get_mut(&id).expect("checked live").killed_by = p.caller.clone();
+            core.save(&st);
+        }
+        live
+    };
+    if live {
         core.kill(&[id]).await;
     }
     core.saw(p.caller.as_deref(), id); // covers the exit it caused
@@ -331,6 +341,7 @@ async fn terminal_rm(core: Ctx<'_>, p: TerminalParams) -> Result<RemoveResult, R
                 format!("kill it first: hc kill {}", crate::terminals::address(id)),
             ));
         }
+        audit(format!("rm {} by {}", crate::terminals::address(id), p.caller.as_deref().unwrap_or("?")));
         core.remove(&mut st, id);
     }
     core.flush_saved().await?;
@@ -361,6 +372,16 @@ async fn terminal_keep(core: Ctx<'_>, p: KeepParams) -> Result<Public, RpcError>
 
 async fn terminal_label(core: Ctx<'_>, p: LabelParams) -> Result<Public, RpcError> {
     let id = resolve(core, &p.terminal)?;
+    let said: Vec<String> =
+        p.labels.iter().filter(|l| !l.0.starts_with("herdr.")).map(|l| format!("{}={}", l.0, l.1)).collect();
+    if !said.is_empty() {
+        audit(format!(
+            "label {} {} by {}",
+            crate::terminals::address(id),
+            said.join(" "),
+            p.caller.as_deref().unwrap_or("?")
+        ));
+    }
     {
         let mut st = core.lock();
         let was = st.reg.terminals.get(&id).cloned();
@@ -620,6 +641,13 @@ async fn events_subscribe(core: Ctx<'_>, p: SubscribeParams) -> Result<Subscribe
 }
 
 /// A machine name that is free: valid, not another machine's, not this core's own.
+/// One line on the core's stderr (core.log, journald) for acts that reach
+/// another terminal: the API knows the caller, and the next incident will
+/// want to know who did it.
+fn audit(what: impl std::fmt::Display) {
+    eprintln!("{} audit: {what}", crate::runtime::now_ms());
+}
+
 fn free_name(core: &Core, st: &crate::runtime::State, name: &str) -> Result<(), RpcError> {
     crate::addr::check_name(name)?;
     if name == core.info.name || name == core.info.id || st.machines.iter().any(|m| m.name == name) {

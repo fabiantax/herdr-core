@@ -166,7 +166,10 @@ hc wait --children any             # several at once: the next one to finish
 `--rm` removes a terminal once it exits and you have its exit code (keep it
 when you still want to `read` its output). `--no-notify` keeps its exit note
 out of your input when you wait for it anyway. Kill and remove helpers you
-started once you have their results: `hc kill <t>; hc rm <t>`.
+started once you have their results: `hc kill <t>; hc rm <t>`. A kill is on
+the record: `hc get <t>` reports `killed_by` (your terminal id), the core
+log notes who killed, removed or relabeled what, and attaching to the
+remains says who ended it.
 
 `run` times out after 180 seconds by default (`--timeout S`): it prints
 `[hc] still running as t3` and exits 124, but the program keeps running.

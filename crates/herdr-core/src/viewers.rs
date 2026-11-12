@@ -73,9 +73,14 @@ impl Core {
             t.check_program()?;
         }
         if !st.screens.contains_key(&id) {
+            let why = st.reg.terminals.get(&id).map_or(String::new(), |t| match (&t.reason, &t.killed_by) {
+                (Some(reason), Some(by)) => format!(": {reason} by {by}"),
+                (Some(reason), None) => format!(": {reason}"),
+                (None, _) => String::new(),
+            });
             return Err(RpcError::new(
                 "finished",
-                format!("{} has finished", crate::terminals::address(id)),
+                format!("{} has finished{why}", crate::terminals::address(id)),
                 format!("read what it left: hc read {}", crate::terminals::address(id)),
             ));
         }

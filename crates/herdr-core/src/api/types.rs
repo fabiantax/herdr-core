@@ -351,6 +351,9 @@ pub struct LabelParams {
     #[serde(with = "label_map")]
     #[schemars(with = "BTreeMap<String, String>")]
     pub labels: Vec<Label>,
+    /// Who is calling (`HC_TERMINAL_ID` inside a terminal).
+    #[arg(skip)]
+    pub caller: Option<String>,
 }
 
 #[derive(clap::Args, Serialize, Deserialize, JsonSchema)]

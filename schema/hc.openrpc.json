@@ -818,6 +818,13 @@
             "description": "Replace a lost program with this machine’s shell, in place. Exit with a code and kill remain final.",
             "type": "boolean"
           },
+          "killed_by": {
+            "description": "Who ended it through the API (`terminal.kill`): the calling terminal\n(`HC_TERMINAL_ID` inside it), else the calling process.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "labels": {
             "additionalProperties": {
               "type": "string"
@@ -1305,6 +1312,13 @@
             "default": false,
             "description": "Replace a lost program with this machine’s shell, in place. Exit with a code and kill remain final.",
             "type": "boolean"
+          },
+          "killed_by": {
+            "description": "Who ended it through the API (`terminal.kill`): the calling terminal\n(`HC_TERMINAL_ID` inside it), else the calling process.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "labels": {
             "additionalProperties": {
@@ -2263,6 +2277,18 @@
       "name": "terminal.label",
       "paramStructure": "by-name",
       "params": [
+        {
+          "description": "Who is calling (`HC_TERMINAL_ID` inside a terminal).",
+          "name": "caller",
+          "required": false,
+          "schema": {
+            "description": "Who is calling (`HC_TERMINAL_ID` inside a terminal).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
         {
           "description": "Labels to set, key=value; `key=` removes one.",
           "name": "labels",
