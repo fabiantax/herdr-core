@@ -232,6 +232,13 @@ fn call(paths: &Paths, method: &str, params: Value) -> Result<Value, RpcError> {
     client::call(&stream, method, params).map_err(|e| client::explain_closed(paths, e))
 }
 
+/// The rows a picker may offer: never the terminal we are in. Attaching it to
+/// itself is refused, and a picker that lists it invites a mis-pick; for the
+/// destructive commands the same mis-pick would reach our own shell.
+fn without_self(terminals: &[Value], me: Option<&str>) -> Vec<Value> {
+    terminals.iter().filter(|t| t["address"].as_str() != me).cloned().collect()
+}
+
 /// The given target, else a picker in a terminal, else an error naming the
 /// candidates: live terminals, or with `finished` (for rm) finished ones.
 fn target(paths: &Paths, given: Option<String>, json: bool, finished: bool) -> Result<String, RpcError> {
@@ -240,10 +247,17 @@ fn target(paths: &Paths, given: Option<String>, json: bool, finished: bool) -> R
     }
     let list = call(paths, "terminal.list", json!({"all": finished}))?;
     let state = if finished { "finished" } else { "live" };
-    let live: Vec<&Value> =
-        list["terminals"].as_array().into_iter().flatten().filter(|t| t["state"] == state).collect();
+    let live = without_self(
+        &list["terminals"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|t| t["state"] == state)
+            .cloned()
+            .collect::<Vec<Value>>(),
+        client::terminal_id().as_deref(),
+    );
     if interactive(json) {
-        let live: Vec<Value> = live.into_iter().cloned().collect();
         let orders: Vec<_> = orders(&live).into_iter().map(|(name, ts)| (name, items(&ts, false))).collect();
         return picker::pick("which terminal?", &orders).ok_or_else(cancelled);
     }
@@ -301,7 +315,8 @@ fn bare(paths: &Paths, json: bool) -> Result<Option<Out>, RpcError> {
         parent: None,
     }));
     let terminals = list["terminals"].as_array().map(Vec::as_slice).unwrap_or_default();
-    let orders: Vec<_> = orders(terminals)
+    let terminals = without_self(terminals, client::terminal_id().as_deref());
+    let orders: Vec<_> = orders(&terminals)
         .into_iter()
         .map(|(name, ts)| (name, choices.iter().cloned().chain(items(&ts, false)).collect()))
         .collect();
@@ -917,6 +932,16 @@ pub const API_ONLY: &[&str] = &["hello", "doc.get", "doc.set"];
 mod tests {
     use super::*;
     use clap::CommandFactory;
+
+    #[test]
+    fn a_picker_list_never_offers_the_terminal_you_are_in() {
+        let t = |address: &str| serde_json::json!({"address": address, "state": "live"});
+        let all = [t("t1"), t("t2"), t("t3")];
+        let left = without_self(&all, Some("t2"));
+        let addresses: Vec<&str> = left.iter().map(|t| t["address"].as_str().unwrap_or("")).collect();
+        assert_eq!(addresses, ["t1", "t3"], "the terminal we are in is not a pickable target");
+        assert_eq!(without_self(&all, None).len(), 3, "outside a terminal nothing is skipped");
+    }
 
     fn parsed(args: &[&str]) -> Cmd {
         Cli::try_parse_from([&["hc"], args].concat()).unwrap().cmd.unwrap()
